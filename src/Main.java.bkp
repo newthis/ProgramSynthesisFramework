@@ -1,0 +1,215 @@
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.function.Predicate;
+
+interface INode extends Cloneable{
+    String name = null;
+    Object value = null;
+    ArrayList<Type> inpTypes = null;
+    Type rType = null;
+    ArrayList<INode> inpNodes = null;
+    ArrayList<INode> outNodes = null;
+    
+    Object evaluate(); 
+
+    String getName();
+    Object getValue();
+    Type[] getInpTypes();
+    Type getRType();
+    INode[] getInpNodes();
+    INode[] getOutNodes();
+
+    void setName(String name);
+    void addInpNode(INode node);
+    void addOutNode(INode node);
+
+    INode removeInpNode(String name);
+    INode removeOutNode(String name);
+    
+    Object clone();
+}
+
+abstract class AbstractNode implements INode{
+    protected String name;
+    protected Object value;
+    protected ArrayList<Type> inpTypes;
+    protected Type rType;
+    private ArrayList<INode> inpNodes;
+    private ArrayList<INode> outNodes;
+
+    public AbstractNode(String name, 
+                        Type[] inpTypes, 
+                        Type rType,
+                        INode[] inpNodes,
+                        INode[] outNodes){
+        this.name = name;
+        this.inpTypes = new ArrayList<Type>(Arrays.asList(inpTypes));
+        this.inpNodes = new ArrayList<INode>(Arrays.asList(inpNodes));
+        this.outNodes = new ArrayList<INode>(Arrays.asList(outNodes));
+        this.rType = rType;
+        
+        this.value = null;
+
+        for(INode node : this.inpNodes){
+            node.addOutNode(this);
+        }
+    } 
+
+    public abstract Object evaluate();
+    
+    public String getName(){
+        return this.name;
+    }
+    
+    public Object getValue(){
+        return this.value;
+    }
+    
+    public Type[] getInpTypes(){
+        return (Type[]) this.inpTypes.toArray();
+    }
+    
+    public Type getRType(){
+        return this.rType;
+    }
+
+    public INode[] getInpNodes(){
+        return (INode[]) this.inpNodes.toArray();
+    }
+    
+    public INode[] getOutNodes(){
+        return (INode[]) this.outNodes.toArray();
+    }
+
+    public void setName(String name){
+        this.name = name;
+    }
+    
+    public void addInpNode(INode node){
+        this.inpNodes.add(node);
+    }
+    
+    public void addOutNode(INode node){
+        this.outNodes.add(node);
+    }
+
+    public INode removeInpNode(String name){
+        INode rmvNode = null;
+        
+        //TODO: Implement O(1) remove
+        for(INode node : this.inpNodes){
+            if(node.getName().equals(name))
+                rmvNode = node; break;
+        }
+
+        inpNodes.remove(rmvNode);
+        
+        return rmvNode;
+    }
+
+    public INode removeOutNode(String name){
+        INode rmvNode = null;
+        
+        //TODO: Implement O(1) remove
+        for(INode node : this.outNodes){
+            if(node.getName().equals(name))
+                rmvNode = node; break;
+        }
+
+        outNodes.remove(rmvNode);
+        return rmvNode;
+    }
+
+    public abstract Object clone();
+}
+
+class MethodNode extends AbstractNode{
+    
+    public Method method;
+        
+    public MethodNode(Method method,
+                          String name, 
+                          Type[] inpTypes, 
+                          Type rType,
+                          INode[] inpNodes,
+                          INode[] outNodes)
+    {
+        super(name, inpTypes, rType, inpNodes, outNodes);
+        this.method = method;
+    }
+
+    protected Object[] getInputs(){
+        ArrayList<Object> inputs = new ArrayList<Object>();
+        for(INode node: this.getInpNodes())
+            inputs.add(node.evaluate());
+        return inputs.toArray();
+    }
+
+    public Object evaluate(){
+        Object[] inputs = this.getInputs();
+        Object output = null;
+
+        try{
+            output = method.invoke(inputs); 
+        } catch (IllegalArgumentException e){
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+
+        this.value = output;
+        return output;
+    }
+
+    public Method getMethod(){
+        return this.method;
+    }
+
+    public Object clone(){
+        return new MethodNode(this.getMethod(),
+                              this.getName(),
+                              this.getInpTypes(),
+                              this.getRType(),
+                              this.getInpNodes(),
+                              this.getOutNodes());
+    }
+}
+
+public class Main {
+
+  private static Type[] strCompatible = {String.class, 
+                                         Locale.class, 
+                                         CharSequence.class,
+                                         // char.class,
+                                         // char[].class,
+                                         Object.class,
+                                         Object[].class};
+
+  public static boolean isString(Type t){
+    return Arrays.stream(strCompatible).anyMatch(t::equals);
+  }
+
+  public static boolean isParamsValid(Type[] ts){
+    if(ts.length == 0) return true;
+    Predicate<Type> p = t -> isString(t);
+    return Arrays.stream(ts).allMatch(p); 
+  }
+
+  public static void main(String[] args) {
+
+    Method[] methods = String.class.getDeclaredMethods();
+    
+    for (Method method : methods) {
+        Type rtype = method.getReturnType();
+        Type[] pType = method.getGenericParameterTypes();
+        
+        if(isString(rtype) && isParamsValid(pType)) System.out.println(method);
+    }
+  }
+}
